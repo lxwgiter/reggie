@@ -12,6 +12,7 @@ import com.lxw.reggie.mapper.DishMapper;
 import com.lxw.reggie.service.CategoryService;
 import com.lxw.reggie.service.DishFlavorService;
 import com.lxw.reggie.service.DishService;
+import com.lxw.reggie.utils.SimpleRedisLock;
 import org.apache.commons.lang.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -156,15 +157,28 @@ public class DishServiceImpl extends ServiceImpl<DishMapper, Dish> implements Di
             //若缓存中已存在数据，直接返回
             return R.success(toList);
         }
-
-        //不存在，到数据库中查询
-        List<DishDto> dishDtos = getDishDtos(dish);
-
-        //将查询到的数据写入redis
-        stringRedisTemplate.opsForValue().set(key,JSONUtil.toJsonStr(dishDtos),60, TimeUnit.MINUTES);
-
+        //不存在，进行缓存重建
+        SimpleRedisLock redisLock = new SimpleRedisLock("dish", stringRedisTemplate);
+        boolean getLock = redisLock.tryLock(5);
+        List<DishDto> dishDtos = null;
+        try {
+            if(!getLock){
+                //没有成功拿到锁，线程休眠50毫秒后，继续去redis中查询
+                Thread.sleep(50);
+                return listWithRedis(dish);
+            }else{
+                dishDtos = getDishDtos(dish);
+                //将查询到的数据写入redis
+                stringRedisTemplate.opsForValue().set(key,JSONUtil.toJsonStr(dishDtos),60, TimeUnit.MINUTES);
+            }
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } finally {
+            redisLock.unlock();
+        }
         return R.success(dishDtos);
     }
+
     private List<DishDto> getDishDtos(Dish dish) {
         //条件构造器
         LambdaQueryWrapper<Dish> queryWrapper = new LambdaQueryWrapper<>();
