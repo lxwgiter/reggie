@@ -16,6 +16,14 @@ spring:
       max-file-size: 10MB
       # 多个文件的最大接收
       max-request-size: 100MB
+  redis:
+    host: 192.168.200.133
+    port: 6379
+    password: 1565028837
+    database: 1
+  cache:
+    redis:
+      time-to-live: 1800000 #设置缓存数据的过期时间
 
 mybatis-plus:
   configuration:
