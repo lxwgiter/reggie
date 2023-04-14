@@ -1,5 +1,7 @@
 package com.lxw.reggie.controller;
 
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lxw.reggie.common.R;
@@ -13,9 +15,12 @@ import com.lxw.reggie.service.DishService;
 import org.apache.commons.lang.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
+import javax.annotation.Resource;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @RestController
@@ -25,10 +30,8 @@ public class DishController {
     private DishService dishService;
 
     @Autowired
-    private DishFlavorService dishFlavorService;
-
-    @Autowired
     private CategoryService categoryService;
+
 
     /**
      * 新增菜品
@@ -121,32 +124,7 @@ public class DishController {
 
     @GetMapping("list")
     public R<List<DishDto>> list(Dish dish){
-        //条件构造器
-        LambdaQueryWrapper<Dish> queryWrapper = new LambdaQueryWrapper<>();
-        //有了下面一句代码，可以增强该方法的拓展性，比如可以用来根据名称模糊查询
-        queryWrapper.like(StringUtils.isNotEmpty(dish.getName()),Dish::getName,dish.getName());
-        queryWrapper.eq(null != dish.getCategoryId(),Dish::getCategoryId,dish.getCategoryId());
-        queryWrapper.eq(Dish::getStatus,1);
-        queryWrapper.orderByDesc(Dish::getUpdateTime);
-
-        List<Dish> dishes = dishService.list(queryWrapper);
-        //将dishes集合转换为dishDto集合
-        List<DishDto> dishDtos = dishes.stream().map(item -> {
-            DishDto dishDto = new DishDto();
-            BeanUtils.copyProperties(item, dishDto);
-            Category category = categoryService.getById(item.getCategoryId());
-
-            if (category != null) {
-                dishDto.setCategoryName(category.getName());
-            }
-            LambdaQueryWrapper<DishFlavor> queryWrapper1 = new LambdaQueryWrapper<>();
-            queryWrapper1.eq(DishFlavor::getDishId, item.getId());
-
-            dishDto.setFlavors(dishFlavorService.list(queryWrapper1));
-            return dishDto;
-        }).collect(Collectors.toList());
-
-        return R.success(dishDtos);
+        return dishService.listWithRedis(dish);
     }
 
 }
